@@ -318,11 +318,29 @@
     </div>
     <div class="modal-body">
       <div class="scan-area" id="scan-area">
-        <div class="scan-frame">📦<div class="scan-line"></div></div>
-        <p style="font-size:.85rem;color:var(--muted);margin-bottom:.75rem;">Conecte un lector de código o escriba el código manualmente</p>
+        <!-- Escáner de cámara real -->
+        <div id="camera-scan-box" style="display:none;margin-bottom:1rem;">
+          <div style="position:relative;width:100%;max-width:320px;margin:0 auto;border-radius:12px;overflow:hidden;border:2px solid var(--accent);">
+            <video id="camera-video" style="width:100%;display:block;" playsinline autoplay muted></video>
+            <div style="position:absolute;top:50%;left:10%;right:10%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);transform:translateY(-50%);animation:scanLine 1.5s ease-in-out infinite;"></div>
+            <canvas id="camera-canvas" style="display:none;"></canvas>
+          </div>
+          <p style="font-size:.82rem;color:var(--muted);margin-top:.75rem;">Apunte la cámara al código de barras del medicamento</p>
+          <button class="nav-btn" onclick="stopCamera()" style="margin-top:.5rem;">✕ Cerrar cámara</button>
+        </div>
+        <!-- Estado de búsqueda -->
+        <div id="lookup-status" style="display:none;padding:.75rem;border-radius:8px;background:rgba(0,212,170,.1);border:1px solid var(--accent);margin-bottom:1rem;font-size:.85rem;color:var(--accent);">
+          🔍 Buscando medicamento...
+        </div>
+        <div id="lookup-result" style="display:none;padding:.75rem;border-radius:8px;background:rgba(16,185,129,.1);border:1px solid var(--success);margin-bottom:1rem;font-size:.85rem;color:var(--success);"></div>
+        <div class="scan-frame" id="scan-frame-icon" style="display:flex;">📦<div class="scan-line"></div></div>
+        <p style="font-size:.85rem;color:var(--muted);margin-bottom:.75rem;">Use la cámara o escriba el código manualmente</p>
         <input class="form-input scan-input" id="barcode-scan-input" placeholder="Escanee o escriba el código aquí..." oninput="autoFillFromBarcode(this.value)">
       </div>
-      <button class="scanner-btn" id="scanner-toggle" onclick="toggleScanner()">📷 Activar Escáner de Código de Barra / QR</button>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem;">
+        <button class="scanner-btn" id="scanner-toggle" onclick="toggleScanner()" style="flex:1;">📷 Activar Escáner de Código de Barra / QR</button>
+        <button class="scanner-btn" id="camera-toggle" onclick="toggleCamera()" style="flex:1;background:rgba(59,130,246,.1);border-color:var(--accent2);color:var(--accent2);">📱 Usar Cámara del Celular</button>
+      </div>
       <br><br>
       <div class="form-grid">
         <div class="form-group full">
@@ -437,6 +455,9 @@
     </div>
   </div>
 </div>
+
+<!-- ZXing para escáner de cámara -->
+<script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
 
 <!-- Firebase SDK (carga solo si se configura) -->
 <script>
@@ -835,20 +856,157 @@ async function confirmDelete() {
 }
 
 // ─── SCANNER ──────────────────────────────────────────────────────────────────
+let cameraActive = false;
+let codeReader = null;
+
 function toggleScanner(f) {
   scannerOpen=f!==undefined?f:!scannerOpen;
   document.getElementById('scan-area').classList.toggle('active',scannerOpen);
   document.getElementById('scanner-toggle').textContent=scannerOpen?'✕ Cerrar Escáner':'📷 Activar Escáner de Código de Barra / QR';
   if(scannerOpen)document.getElementById('barcode-scan-input').focus();
+  if(!scannerOpen) stopCamera();
 }
-function autoFillFromBarcode(val) {
-  if(val.length>=8){
-    document.getElementById('f-codigo').value=val;
-    const existing=meds.find(m=>m.codigo===val);
-    if(existing){toast(`✅ Código encontrado: ${existing.nombre}`);setTimeout(()=>{document.getElementById('barcode-scan-input').value='';toggleScanner(false);editMed(existing.id);},800);}
-    else{toast('📦 Nuevo producto — complete la información');}
+
+async function toggleCamera() {
+  if(cameraActive){ stopCamera(); return; }
+  if(!document.getElementById('scan-area').classList.contains('active')){
+    document.getElementById('scan-area').classList.add('active');
+    scannerOpen=true;
+  }
+  const box = document.getElementById('camera-scan-box');
+  const icon = document.getElementById('scan-frame-icon');
+  const btn = document.getElementById('camera-toggle');
+  box.style.display='block';
+  icon.style.display='none';
+  btn.textContent='✕ Cerrar Cámara';
+  cameraActive=true;
+  try {
+    if(window.ZXing) {
+      codeReader = new ZXing.BrowserMultiFormatReader();
+      const devices = await codeReader.listVideoInputDevices();
+      // Preferir cámara trasera
+      const backCam = devices.find(d=>d.label.toLowerCase().includes('back')||d.label.toLowerCase().includes('rear')||d.label.toLowerCase().includes('environment'));
+      const deviceId = backCam ? backCam.deviceId : (devices[0]?.deviceId);
+      await codeReader.decodeFromVideoDevice(deviceId, 'camera-video', (result, err) => {
+        if(result) {
+          const code = result.getText();
+          document.getElementById('barcode-scan-input').value = code;
+          autoFillFromBarcode(code);
+          stopCamera();
+        }
+      });
+    } else {
+      // Fallback: usar getUserMedia manualmente
+      const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+      const video = document.getElementById('camera-video');
+      video.srcObject = stream;
+      video.play();
+      scanFramesManual(video);
+    }
+  } catch(e) {
+    toast('❌ No se pudo acceder a la cámara: '+e.message,'error');
+    stopCamera();
   }
 }
+
+function scanFramesManual(video) {
+  if(!cameraActive) return;
+  const canvas = document.getElementById('camera-canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video,0,0);
+  requestAnimationFrame(()=>scanFramesManual(video));
+}
+
+function stopCamera() {
+  cameraActive=false;
+  if(codeReader){ try{codeReader.reset();}catch(e){} codeReader=null; }
+  const video = document.getElementById('camera-video');
+  if(video.srcObject){ video.srcObject.getTracks().forEach(t=>t.stop()); video.srcObject=null; }
+  document.getElementById('camera-scan-box').style.display='none';
+  document.getElementById('scan-frame-icon').style.display='flex';
+  document.getElementById('camera-toggle').textContent='📱 Usar Cámara del Celular';
+}
+
+async function autoFillFromBarcode(val) {
+  if(val.length>=8){
+    document.getElementById('f-codigo').value=val;
+    // Verificar si ya existe en inventario
+    const existing=meds.find(m=>m.codigo===val);
+    if(existing){
+      toast(`✅ Código encontrado: ${existing.nombre}`);
+      setTimeout(()=>{document.getElementById('barcode-scan-input').value='';toggleScanner(false);editMed(existing.id);},800);
+      return;
+    }
+    // Buscar en base de datos online
+    buscarMedicamentoOnline(val);
+  }
+}
+
+async function buscarMedicamentoOnline(codigo) {
+  const statusEl = document.getElementById('lookup-status');
+  const resultEl = document.getElementById('lookup-result');
+  statusEl.style.display='block';
+  statusEl.textContent='🔍 Buscando medicamento en base de datos...';
+  resultEl.style.display='none';
+  try {
+    // Intentar Open Food Facts (tiene muchos medicamentos de Honduras/Latinoamérica)
+    const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${codigo}.json`);
+    const data = await res.json();
+    if(data.status===1 && data.product){
+      const p = data.product;
+      const nombre = p.product_name || p.product_name_es || '';
+      const marca = p.brands || '';
+      const cantidad = p.quantity || '';
+      if(nombre){
+        statusEl.style.display='none';
+        resultEl.style.display='block';
+        resultEl.innerHTML=`✅ Encontrado: <strong>${nombre}</strong>${marca?' — '+marca:''}${cantidad?' ('+cantidad+')':''}`;
+        // Llenar campos automáticamente
+        if(nombre) document.getElementById('f-nombre').value = nombre + (marca?' — '+marca:'');
+        if(cantidad) document.getElementById('f-concentracion').value = cantidad;
+        toast('✅ Información encontrada y cargada automáticamente');
+        return;
+      }
+    }
+    // Si no encontró en OpenFoodFacts, intentar Open Drug Database
+    const res2 = await fetch(`https://api.fda.gov/drug/ndc.json?search=package_ndc:"${codigo}"&limit=1`).catch(()=>null);
+    if(res2 && res2.ok){
+      const d2 = await res2.json();
+      if(d2.results && d2.results[0]){
+        const med = d2.results[0];
+        const nombre = med.brand_name || med.generic_name || '';
+        const compuesto = med.generic_name || '';
+        const presentacion = med.dosage_form || '';
+        statusEl.style.display='none';
+        resultEl.style.display='block';
+        resultEl.innerHTML=`✅ Encontrado (FDA): <strong>${nombre}</strong>${compuesto?' · '+compuesto:''}`;
+        if(nombre) document.getElementById('f-nombre').value = nombre;
+        if(compuesto) document.getElementById('f-compuesto').value = compuesto;
+        if(presentacion){
+          const sel = document.getElementById('f-presentacion');
+          const map = {'TABLET':'Tabletas','CAPSULE':'Cápsulas','SYRUP':'Jarabe','INJECTABLE':'Inyectable','CREAM':'Crema','SOLUTION':'Gotas'};
+          for(const[k,v] of Object.entries(map)){ if(presentacion.toUpperCase().includes(k)){sel.value=v;break;} }
+        }
+        toast('✅ Información encontrada y cargada automáticamente');
+        return;
+      }
+    }
+    // No encontrado
+    statusEl.style.display='none';
+    resultEl.style.display='block';
+    resultEl.style.background='rgba(245,158,11,.1)';
+    resultEl.style.borderColor='var(--warn)';
+    resultEl.style.color='var(--warn)';
+    resultEl.textContent='⚠️ Código no encontrado en base de datos — complete la información manualmente';
+    setTimeout(()=>{resultEl.style.display='none';resultEl.style.background='';resultEl.style.borderColor='';resultEl.style.color='';},4000);
+  } catch(e) {
+    statusEl.style.display='none';
+    toast('⚠️ Sin conexión — complete la información manualmente','error');
+  }
+}
+
 function toggleChip(el){el.classList.toggle('selected');}
 
 // ─── DESCARGAR HTML ───────────────────────────────────────────────────────────
