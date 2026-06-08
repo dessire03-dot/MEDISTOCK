@@ -757,16 +757,19 @@ async function sendEmail() {
   }).join('\n');
   const mensaje = `REPORTE MEDISTOCK — ${new Date().toLocaleDateString('es-HN')}\n\nMedicamentos con alertas:\n\n${lista}\n\nTotal en inventario: ${meds.length} medicamentos.`;
   try {
-    await emailjs.send('service_5d8vt6h', 'cbrua4g', {
-      name: 'MediStock',
-      message: mensaje,
-      email: 'clinicastafe2020@gmail.com',
-      title: 'Alerta de Medicamentos'
-    });
+    const correos = ['clinicastafe2020@gmail.com', 'draingridmorales03@gmail.com', 'dennisjaviercuellar@gmail.com'];
+    for (const correo of correos) {
+      await emailjs.send('service_5d8vt6h', 'cbrua4g', {
+        name: 'MediStock',
+        message: mensaje,
+        email: correo,
+        title: 'Alerta de Medicamentos'
+      });
+    }
     emailHistory.unshift({ts: new Date().toISOString(), tipo: 'Alerta enviada por correo', desc: `${alertas.length} medicamentos con alerta`});
     localStorage.setItem('ms_emails', JSON.stringify(emailHistory));
     renderEmailLog();
-    toast('✅ Alerta enviada a clinicastafe2020@gmail.com');
+    toast('✅ Alerta enviada a 3 correos exitosamente');
   } catch(e) {
     toast('❌ Error al enviar: ' + e.text, 'error');
   }
