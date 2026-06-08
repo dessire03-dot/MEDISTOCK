@@ -795,7 +795,9 @@ function editMed(id) {
   document.querySelectorAll('.alert-chip').forEach(c=>c.classList.toggle('selected',(m.alertas||[]).includes(parseInt(c.dataset.val))));
   document.getElementById('modal-add').classList.add('open');
 }
+let saving = false;
 async function saveMed() {
+  if(saving) return;
   const nombre=document.getElementById('f-nombre').value.trim();
   const compuesto=document.getElementById('f-compuesto').value.trim();
   const vencimiento=document.getElementById('f-vencimiento').value;
@@ -816,12 +818,20 @@ async function saveMed() {
     ingreso:document.getElementById('f-ingreso').value,
     usuario,comentarios:document.getElementById('f-comentarios').value.trim(),alertas
   };
-  await persistMed(med);
-  await persistLog({ts:new Date().toISOString(),action:editingId?'edicion':'ingreso',med:med.nombre,user:usuario});
-  if(!db){if(editingId){const i=meds.findIndex(m=>m.id===editingId);meds[i]=med;}else{meds.unshift(med);}saveLocal();}
-  renderTable();renderDashboard();
-  closeModal('modal-add');
-  toast(editingId?'✅ Medicamento actualizado':'✅ Medicamento agregado al inventario');
+  saving=true;
+  const saveBtn=document.querySelector('#modal-add .btn-primary');
+  if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='⏳ Guardando...';}
+  try {
+    await persistMed(med);
+    await persistLog({ts:new Date().toISOString(),action:editingId?'edicion':'ingreso',med:med.nombre,user:usuario});
+    if(!db){if(editingId){const i=meds.findIndex(m=>m.id===editingId);meds[i]=med;}else{meds.unshift(med);}saveLocal();}
+    renderTable();renderDashboard();
+    closeModal('modal-add');
+    toast(editingId?'✅ Medicamento actualizado':'✅ Medicamento agregado al inventario');
+  } finally {
+    saving=false;
+    if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='💾 Guardar Medicamento';}
+  }
 }
 function viewMed(id) {
   const m=meds.find(x=>x.id===id);if(!m)return;
@@ -1024,3 +1034,4 @@ renderEmailLog();
 </script>
 </body>
 </html>
+
