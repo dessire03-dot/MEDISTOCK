@@ -651,7 +651,7 @@ function renderDashboard() {
   document.getElementById('dash-date').textContent = new Date().toLocaleDateString('es-HN',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   const vencidos=meds.filter(m=>daysUntil(m.vencimiento)<0).length;
   const proximos=meds.filter(m=>{const d=daysUntil(m.vencimiento);return d>=0&&d<=90;}).length;
-  const stockBajo=meds.filter(m=>m.stock<10).length;
+  const stockBajo=meds.filter(m=>m.stock<5).length;
   document.getElementById('stats-grid').innerHTML=`
     <div class="stat-card" style="--accent-color:var(--accent)"><div class="stat-icon">💊</div><div class="stat-val">${meds.length}</div><div class="stat-lbl">Total Medicamentos</div></div>
     <div class="stat-card" style="--accent-color:var(--danger)"><div class="stat-icon">⛔</div><div class="stat-val">${vencidos}</div><div class="stat-lbl">Vencidos</div></div>
@@ -748,14 +748,30 @@ function exportLog() {
 }
 
 async function sendEmail() {
-  const alertas = meds.filter(m => daysUntil(m.vencimiento) <= 90);
-  if (!alertas.length) { toast('✅ No hay alertas activas para enviar'); return; }
-  const lista = alertas.map(m => {
-    const d = daysUntil(m.vencimiento);
-    const estado = d < 0 ? 'VENCIDO' : `Vence en ${d} días`;
-    return `• ${m.nombre} (${m.compuesto}) — ${estado} — Stock: ${m.stock}`;
-  }).join('\n');
-  const mensaje = `REPORTE MEDISTOCK — ${new Date().toLocaleDateString('es-HN')}\n\nMedicamentos con alertas:\n\n${lista}\n\nTotal en inventario: ${meds.length} medicamentos.`;
+  const alertasVencimiento = meds.filter(m => daysUntil(m.vencimiento) <= 90);
+  const alertasStock = meds.filter(m => m.stock < 5);
+  if (!alertasVencimiento.length && !alertasStock.length) { toast('✅ No hay alertas activas para enviar'); return; }
+  
+  let mensaje = `REPORTE MEDISTOCK — ${new Date().toLocaleDateString('es-HN')}\n\n`;
+  
+  if (alertasVencimiento.length) {
+    mensaje += `⚠️ MEDICAMENTOS POR VENCER O VENCIDOS (${alertasVencimiento.length}):\n`;
+    mensaje += alertasVencimiento.map(m => {
+      const d = daysUntil(m.vencimiento);
+      const estado = d < 0 ? 'VENCIDO' : `Vence en ${d} días`;
+      return `• ${m.nombre} (${m.compuesto}) — ${estado} — Stock: ${m.stock}`;
+    }).join('\n');
+    mensaje += '\n\n';
+  }
+  
+  if (alertasStock.length) {
+    mensaje += `📦 STOCK CRÍTICO BAJO 5 UNIDADES (${alertasStock.length}):\n`;
+    mensaje += alertasStock.map(m => `• ${m.nombre} (${m.compuesto}) — Stock actual: ${m.stock} unidades`).join('\n');
+    mensaje += '\n\n';
+  }
+  
+  mensaje += `Total en inventario: ${meds.length} medicamentos.`;
+  
   try {
     const correos = ['clinicastafe2020@gmail.com', 'draingridmorales03@gmail.com', 'dennisjaviercuellar@gmail.com'];
     for (const correo of correos) {
@@ -766,7 +782,7 @@ async function sendEmail() {
         title: 'Alerta de Medicamentos'
       });
     }
-    emailHistory.unshift({ts: new Date().toISOString(), tipo: 'Alerta enviada por correo', desc: `${alertas.length} medicamentos con alerta`});
+    emailHistory.unshift({ts: new Date().toISOString(), tipo: 'Alerta enviada por correo', desc: `${alertasVencimiento.length} por vencer, ${alertasStock.length} stock crítico`});
     localStorage.setItem('ms_emails', JSON.stringify(emailHistory));
     renderEmailLog();
     toast('✅ Alerta enviada a 3 correos exitosamente');
@@ -978,30 +994,71 @@ async function autoFillFromBarcode(val) {
 async function buscarMedicamentoOnline(codigo) {
   const statusEl = document.getElementById('lookup-status');
   const resultEl = document.getElementById('lookup-result');
+
+  // ── 1. Base de datos propia (Firebase/localStorage) ──────────────────────
+  const enInventario = meds.find(m => m.codigo === codigo);
+  if(enInventario) {
+    statusEl.style.display='none';
+    resultEl.style.display='block';
+    resultEl.style.background='rgba(0,212,170,.1)';
+    resultEl.style.borderColor='var(--accent)';
+    resultEl.style.color='var(--accent)';
+    resultEl.innerHTML=`✅ En tu inventario: <strong>${enInventario.nombre}</strong> — ${enInventario.compuesto}`;
+    document.getElementById('f-nombre').value = enInventario.nombre;
+    document.getElementById('f-compuesto').value = enInventario.compuesto;
+    document.getElementById('f-presentacion').value = enInventario.presentacion || '';
+    document.getElementById('f-concentracion').value = enInventario.concentracion || '';
+    document.getElementById('f-venta').value = enInventario.venta || 'Caja';
+    document.getElementById('f-precio').value = enInventario.precio || '';
+    toast('✅ Datos cargados desde tu inventario');
+    return;
+  }
+
   statusEl.style.display='block';
-  statusEl.textContent='🔍 Buscando medicamento en base de datos...';
+  statusEl.textContent='🔍 Buscando en bases de datos...';
   resultEl.style.display='none';
   try {
-    // Intentar Open Food Facts (tiene muchos medicamentos de Honduras/Latinoamérica)
-    const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${codigo}.json`);
-    const data = await res.json();
-    if(data.status===1 && data.product){
-      const p = data.product;
-      const nombre = p.product_name || p.product_name_es || '';
-      const marca = p.brands || '';
-      const cantidad = p.quantity || '';
-      if(nombre){
-        statusEl.style.display='none';
-        resultEl.style.display='block';
-        resultEl.innerHTML=`✅ Encontrado: <strong>${nombre}</strong>${marca?' — '+marca:''}${cantidad?' ('+cantidad+')':''}`;
-        // Llenar campos automáticamente
-        if(nombre) document.getElementById('f-nombre').value = nombre + (marca?' — '+marca:'');
-        if(cantidad) document.getElementById('f-concentracion').value = cantidad;
-        toast('✅ Información encontrada y cargada automáticamente');
-        return;
+    // ── 2. Open Food Facts (latinoamérica) ────────────────────────────────
+    const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${codigo}.json`).catch(()=>null);
+    if(res && res.ok) {
+      const data = await res.json();
+      if(data.status===1 && data.product){
+        const p = data.product;
+        const nombre = p.product_name_es || p.product_name || '';
+        const marca = p.brands || '';
+        const cantidad = p.quantity || '';
+        if(nombre){
+          statusEl.style.display='none';
+          resultEl.style.display='block';
+          resultEl.innerHTML=`✅ Encontrado: <strong>${nombre}</strong>${marca?' — '+marca:''}${cantidad?' ('+cantidad+')':''}`;
+          document.getElementById('f-nombre').value = nombre + (marca?' — '+marca:'');
+          if(cantidad) document.getElementById('f-concentracion').value = cantidad;
+          toast('✅ Información encontrada y cargada');
+          return;
+        }
       }
     }
-    // Si no encontró en OpenFoodFacts, intentar Open Drug Database
+
+    // ── 3. Open Beauty Facts (productos farmacéuticos) ────────────────────
+    const res3 = await fetch(`https://world.openbeautyfacts.org/api/v0/product/${codigo}.json`).catch(()=>null);
+    if(res3 && res3.ok) {
+      const d3 = await res3.json();
+      if(d3.status===1 && d3.product){
+        const p = d3.product;
+        const nombre = p.product_name_es || p.product_name || '';
+        const marca = p.brands || '';
+        if(nombre){
+          statusEl.style.display='none';
+          resultEl.style.display='block';
+          resultEl.innerHTML=`✅ Encontrado: <strong>${nombre}</strong>${marca?' — '+marca:''}`;
+          document.getElementById('f-nombre').value = nombre + (marca?' — '+marca:'');
+          toast('✅ Información encontrada y cargada');
+          return;
+        }
+      }
+    }
+
+    // ── 4. FDA Drug Database ───────────────────────────────────────────────
     const res2 = await fetch(`https://api.fda.gov/drug/ndc.json?search=package_ndc:"${codigo}"&limit=1`).catch(()=>null);
     if(res2 && res2.ok){
       const d2 = await res2.json();
@@ -1020,23 +1077,26 @@ async function buscarMedicamentoOnline(codigo) {
           const map = {'TABLET':'Tabletas','CAPSULE':'Cápsulas','SYRUP':'Jarabe','INJECTABLE':'Inyectable','CREAM':'Crema','SOLUTION':'Gotas'};
           for(const[k,v] of Object.entries(map)){ if(presentacion.toUpperCase().includes(k)){sel.value=v;break;} }
         }
-        toast('✅ Información encontrada y cargada automáticamente');
+        toast('✅ Información encontrada (FDA) y cargada');
         return;
       }
     }
-    // No encontrado
+
+    // ── 5. No encontrado — abrir formulario con código listo ──────────────
     statusEl.style.display='none';
     resultEl.style.display='block';
     resultEl.style.background='rgba(245,158,11,.1)';
     resultEl.style.borderColor='var(--warn)';
     resultEl.style.color='var(--warn)';
-    resultEl.textContent='⚠️ Código no encontrado en base de datos — complete la información manualmente';
-    setTimeout(()=>{resultEl.style.display='none';resultEl.style.background='';resultEl.style.borderColor='';resultEl.style.color='';},4000);
+    resultEl.textContent='⚠️ No encontrado en bases de datos — complete los datos manualmente';
+    setTimeout(()=>{resultEl.style.display='none';},4000);
   } catch(e) {
     statusEl.style.display='none';
     toast('⚠️ Sin conexión — complete la información manualmente','error');
   }
 }
+
+
 
 function toggleChip(el){el.classList.toggle('selected');}
 
