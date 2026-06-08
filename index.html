@@ -458,6 +458,9 @@
 
 <!-- ZXing para escáner de cámara -->
 <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
+<!-- EmailJS -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+<script>emailjs.init('t2M2sjSZbbYk7J55b');</script>
 
 <!-- Firebase SDK (carga solo si se configura) -->
 <script>
@@ -744,14 +747,29 @@ function exportLog() {
   toast('✅ Bitácora exportada');
 }
 
-function sendEmail() {
-  const email=document.getElementById('clinic-email').value||'clinica@ejemplo.com';
-  const alertas=meds.filter(m=>daysUntil(m.vencimiento)<=90).map(m=>`- ${m.nombre} (${m.compuesto}): vence ${fmtDate(m.vencimiento)}, stock ${m.stock}`).join('\n');
-  const body=`REPORTE MEDISTOCK - ${new Date().toLocaleDateString('es-HN')}\n\nMedicamentos próximos a vencer o vencidos:\n${alertas||'Ninguno'}\n\nTotal en inventario: ${meds.length} medicamentos.`;
-  window.location.href=`mailto:${email}?subject=Reporte MediStock ${new Date().toLocaleDateString('es-HN')}&body=${encodeURIComponent(body)}`;
-  emailHistory.unshift({ts:new Date().toISOString(),tipo:'Correo generado',desc:`Para: ${email}`});
-  localStorage.setItem('ms_emails',JSON.stringify(emailHistory));
-  renderEmailLog();
+async function sendEmail() {
+  const alertas = meds.filter(m => daysUntil(m.vencimiento) <= 90);
+  if (!alertas.length) { toast('✅ No hay alertas activas para enviar'); return; }
+  const lista = alertas.map(m => {
+    const d = daysUntil(m.vencimiento);
+    const estado = d < 0 ? 'VENCIDO' : `Vence en ${d} días`;
+    return `• ${m.nombre} (${m.compuesto}) — ${estado} — Stock: ${m.stock}`;
+  }).join('\n');
+  const mensaje = `REPORTE MEDISTOCK — ${new Date().toLocaleDateString('es-HN')}\n\nMedicamentos con alertas:\n\n${lista}\n\nTotal en inventario: ${meds.length} medicamentos.`;
+  try {
+    await emailjs.send('service_5d8vt6h', 'cbrua4g', {
+      name: 'MediStock',
+      message: mensaje,
+      email: 'clinicastafe2020@gmail.com',
+      title: 'Alerta de Medicamentos'
+    });
+    emailHistory.unshift({ts: new Date().toISOString(), tipo: 'Alerta enviada por correo', desc: `${alertas.length} medicamentos con alerta`});
+    localStorage.setItem('ms_emails', JSON.stringify(emailHistory));
+    renderEmailLog();
+    toast('✅ Alerta enviada a clinicastafe2020@gmail.com');
+  } catch(e) {
+    toast('❌ Error al enviar: ' + e.text, 'error');
+  }
 }
 
 function renderEmailLog() {
