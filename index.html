@@ -462,6 +462,96 @@
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 <script>emailjs.init('t2M2sjSZbbYk7J55b');</script>
 
+<!-- MODAL ENTRADA -->
+<div class="modal-overlay" id="modal-entrada">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">📥 Entrada de Stock</span>
+      <button class="modal-close" onclick="closeModal('modal-entrada')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="entrada-med-nombre" style="font-weight:700;font-size:1rem;margin-bottom:1.25rem;color:var(--accent)"></p>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Cantidad que Entra *</label>
+          <input class="form-input" id="entrada-cantidad" type="number" min="1" placeholder="Ej: 50">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stock Actual</label>
+          <input class="form-input" id="entrada-stock-actual" type="number" disabled style="opacity:.6">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Proveedor</label>
+          <input class="form-input" id="entrada-proveedor" placeholder="Nombre del proveedor">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Número de Lote</label>
+          <input class="form-input" id="entrada-lote" placeholder="Ej: LOT-2024-001">
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Recibido por *</label>
+          <input class="form-input" id="entrada-usuario" placeholder="Nombre del responsable">
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Comentarios</label>
+          <textarea class="form-textarea" id="entrada-comentarios" placeholder="Observaciones adicionales..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="nav-btn" onclick="closeModal('modal-entrada')">Cancelar</button>
+      <button class="btn-primary" style="background:var(--success)" onclick="confirmarEntrada()">📥 Registrar Entrada</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL SALIDA -->
+<div class="modal-overlay" id="modal-salida">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">📤 Salida de Stock</span>
+      <button class="modal-close" onclick="closeModal('modal-salida')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="salida-med-nombre" style="font-weight:700;font-size:1rem;margin-bottom:1.25rem;color:var(--accent2)"></p>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Cantidad que Sale *</label>
+          <input class="form-input" id="salida-cantidad" type="number" min="1" placeholder="Ej: 10">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Stock Actual</label>
+          <input class="form-input" id="salida-stock-actual" type="number" disabled style="opacity:.6">
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Motivo *</label>
+          <select class="form-select" id="salida-motivo">
+            <option value="">Seleccionar...</option>
+            <option>Venta</option>
+            <option>Uso interno / paciente</option>
+            <option>Muestra médica</option>
+            <option>Vencido / deteriorado</option>
+            <option>Devolución a proveedor</option>
+            <option>Otro</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Autorizado por *</label>
+          <input class="form-input" id="salida-usuario" placeholder="Nombre del responsable">
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Comentarios</label>
+          <textarea class="form-textarea" id="salida-comentarios" placeholder="Observaciones adicionales..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="nav-btn" onclick="closeModal('modal-salida')">Cancelar</button>
+      <button class="btn-primary" style="background:var(--accent2)" onclick="confirmarSalida()">📤 Registrar Salida</button>
+    </div>
+  </div>
+</div>
+
 <!-- Firebase SDK (carga solo si se configura) -->
 <script>
 // ─── ESTADO ───────────────────────────────────────────────────────────────────
@@ -693,6 +783,8 @@ function renderTable() {
     <td class="action-btns">
       <button class="icon-btn" onclick="viewMed('${m.id}')" title="Ver">👁</button>
       <button class="icon-btn" onclick="editMed('${m.id}')" title="Editar">✏️</button>
+      <button class="icon-btn" onclick="openEntrada('${m.id}')" title="Entrada de stock" style="color:var(--success);border-color:var(--success)">📥</button>
+      <button class="icon-btn" onclick="openSalida('${m.id}')" title="Salida de stock" style="color:var(--accent2);border-color:var(--accent2)">📤</button>
       <button class="icon-btn del" onclick="askDelete('${m.id}')" title="Eliminar">🗑</button>
     </td>
   </tr>`).join('');
@@ -713,12 +805,16 @@ function filterAlerts(f,btn){document.querySelectorAll('#view-alertas .nav-btn')
 function renderLog() {
   const ll=document.getElementById('log-list');
   if(!logs.length){ll.innerHTML='<div class="empty-state"><div class="empty-icon">📋</div>No hay movimientos registrados</div>';return;}
-  ll.innerHTML=logs.map(l=>`<div class="log-item">
-    <span style="font-size:1.2rem">${l.action==='ingreso'?'📥':l.action==='eliminacion'?'🗑️':'✏️'}</span>
-    <div class="log-action"><strong>${l.med}</strong><br><span style="color:var(--muted);font-size:.78rem">${l.action==='ingreso'?'Ingresado':l.action==='eliminacion'?'Eliminado':'Editado'}</span></div>
+  ll.innerHTML=logs.map(l=>{
+    const iconos = {'ingreso':'📥','eliminacion':'🗑️','edicion':'✏️','entrada':'📦','salida':'📤'};
+    const nombres = {'ingreso':'Ingresado','eliminacion':'Eliminado','edicion':'Editado','entrada':'Entrada de stock','salida':'Salida de stock'};
+    const detalle = l.action==='entrada' ? ` +${l.cantidad} uds (${l.proveedor||'—'})` : l.action==='salida' ? ` -${l.cantidad} uds · ${l.motivo||''}` : '';
+    return `<div class="log-item">
+    <span style="font-size:1.2rem">${iconos[l.action]||'📋'}</span>
+    <div class="log-action"><strong>${l.med}</strong>${detalle}<br><span style="color:var(--muted);font-size:.78rem">${nombres[l.action]||l.action}${l.stockAnterior!==undefined?` · Stock: ${l.stockAnterior} → ${l.stockNuevo}`:''}</span></div>
     <span class="log-user">👤 ${l.user}</span>
     <span class="log-time">${new Date(l.ts).toLocaleString('es-HN')}</span>
-  </div>`).join('');
+  </div>`;}).join('');
 }
 
 // ─── EXPORT ───────────────────────────────────────────────────────────────────
@@ -900,6 +996,98 @@ async function confirmDelete() {
   renderTable();renderDashboard();
   closeModal('modal-del');
   toast('🗑️ Medicamento eliminado y registrado en bitácora');
+}
+
+// ─── ENTRADA / SALIDA ─────────────────────────────────────────────────────────
+let movimientoId = null;
+
+function openEntrada(id) {
+  const m = meds.find(x => x.id === id);
+  if(!m) return;
+  movimientoId = id;
+  document.getElementById('entrada-med-nombre').textContent = `💊 ${m.nombre} — ${m.compuesto}`;
+  document.getElementById('entrada-stock-actual').value = m.stock;
+  document.getElementById('entrada-cantidad').value = '';
+  document.getElementById('entrada-proveedor').value = '';
+  document.getElementById('entrada-lote').value = '';
+  document.getElementById('entrada-usuario').value = '';
+  document.getElementById('entrada-comentarios').value = '';
+  document.getElementById('modal-entrada').classList.add('open');
+}
+
+async function confirmarEntrada() {
+  const cantidad = parseInt(document.getElementById('entrada-cantidad').value);
+  const usuario = document.getElementById('entrada-usuario').value.trim();
+  const proveedor = document.getElementById('entrada-proveedor').value.trim();
+  const lote = document.getElementById('entrada-lote').value.trim();
+  const comentarios = document.getElementById('entrada-comentarios').value.trim();
+  if(!cantidad || cantidad < 1) { toast('⚠️ Ingrese una cantidad válida', 'error'); return; }
+  if(!usuario) { toast('⚠️ Ingrese quién recibe la entrada', 'error'); return; }
+  const m = meds.find(x => x.id === movimientoId);
+  if(!m) return;
+  const nuevoStock = m.stock + cantidad;
+  const medActualizado = {...m, stock: nuevoStock};
+  await persistMed(medActualizado);
+  if(!db){ const i=meds.findIndex(x=>x.id===movimientoId); meds[i]=medActualizado; saveLocal(); }
+  await persistLog({
+    ts: new Date().toISOString(),
+    action: 'entrada',
+    med: m.nombre,
+    user: usuario,
+    cantidad,
+    stockAnterior: m.stock,
+    stockNuevo: nuevoStock,
+    proveedor: proveedor || '—',
+    lote: lote || '—',
+    comentarios: comentarios || ''
+  });
+  renderTable(); renderDashboard();
+  closeModal('modal-entrada');
+  toast(`✅ Entrada registrada — Stock: ${m.stock} → ${nuevoStock} unidades`);
+}
+
+function openSalida(id) {
+  const m = meds.find(x => x.id === id);
+  if(!m) return;
+  movimientoId = id;
+  document.getElementById('salida-med-nombre').textContent = `💊 ${m.nombre} — ${m.compuesto}`;
+  document.getElementById('salida-stock-actual').value = m.stock;
+  document.getElementById('salida-cantidad').value = '';
+  document.getElementById('salida-motivo').value = '';
+  document.getElementById('salida-usuario').value = '';
+  document.getElementById('salida-comentarios').value = '';
+  document.getElementById('modal-salida').classList.add('open');
+}
+
+async function confirmarSalida() {
+  const cantidad = parseInt(document.getElementById('salida-cantidad').value);
+  const usuario = document.getElementById('salida-usuario').value.trim();
+  const motivo = document.getElementById('salida-motivo').value;
+  const comentarios = document.getElementById('salida-comentarios').value.trim();
+  if(!cantidad || cantidad < 1) { toast('⚠️ Ingrese una cantidad válida', 'error'); return; }
+  if(!motivo) { toast('⚠️ Seleccione un motivo', 'error'); return; }
+  if(!usuario) { toast('⚠️ Ingrese quién autoriza la salida', 'error'); return; }
+  const m = meds.find(x => x.id === movimientoId);
+  if(!m) return;
+  if(cantidad > m.stock) { toast(`⚠️ Stock insuficiente — Solo hay ${m.stock} unidades`, 'error'); return; }
+  const nuevoStock = m.stock - cantidad;
+  const medActualizado = {...m, stock: nuevoStock};
+  await persistMed(medActualizado);
+  if(!db){ const i=meds.findIndex(x=>x.id===movimientoId); meds[i]=medActualizado; saveLocal(); }
+  await persistLog({
+    ts: new Date().toISOString(),
+    action: 'salida',
+    med: m.nombre,
+    user: usuario,
+    cantidad,
+    stockAnterior: m.stock,
+    stockNuevo: nuevoStock,
+    motivo,
+    comentarios: comentarios || ''
+  });
+  renderTable(); renderDashboard();
+  closeModal('modal-salida');
+  toast(`✅ Salida registrada — Stock: ${m.stock} → ${nuevoStock} unidades`);
 }
 
 // ─── SCANNER ──────────────────────────────────────────────────────────────────
@@ -1115,4 +1303,3 @@ renderEmailLog();
 </script>
 </body>
 </html>
-
