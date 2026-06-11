@@ -746,7 +746,7 @@ function renderDashboard() {
     <div class="stat-card" style="--accent-color:var(--accent)"><div class="stat-icon">💊</div><div class="stat-val">${meds.length}</div><div class="stat-lbl">Total Medicamentos</div></div>
     <div class="stat-card" style="--accent-color:var(--danger)"><div class="stat-icon">⛔</div><div class="stat-val">${vencidos}</div><div class="stat-lbl">Vencidos</div></div>
     <div class="stat-card" style="--accent-color:var(--warn)"><div class="stat-icon">⚠️</div><div class="stat-val">${proximos}</div><div class="stat-lbl">Próximos a Vencer (90d)</div></div>
-    <div class="stat-card" style="--accent-color:var(--accent2)"><div class="stat-icon">📦</div><div class="stat-val">${stockBajo}</div><div class="stat-lbl">Stock Bajo (&lt;10)</div></div>`;
+    <div class="stat-card" style="--accent-color:var(--accent2)"><div class="stat-icon">📦</div><div class="stat-val">${stockBajo}</div><div class="stat-lbl">Stock Bajo (&lt;5)</div></div>`;
   const alertMeds=meds.filter(m=>daysUntil(m.vencimiento)<=90).sort((a,b)=>new Date(a.vencimiento)-new Date(b.vencimiento));
   const al=document.getElementById('dash-alerts');
   if(!alertMeds.length){al.innerHTML='<div class="empty-state"><div class="empty-icon">✅</div>No hay alertas activas</div>';} else {
