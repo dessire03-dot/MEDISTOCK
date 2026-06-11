@@ -749,6 +749,7 @@ function renderDashboard() {
     <div class="stat-card" style="--accent-color:var(--accent2)"><div class="stat-icon">📦</div><div class="stat-val">${stockBajo}</div><div class="stat-lbl">Stock Bajo (&lt;5)</div></div>`;
   const alertMeds=meds.filter(m=>daysUntil(m.vencimiento)<=90).sort((a,b)=>new Date(a.vencimiento)-new Date(b.vencimiento));
   const al=document.getElementById('dash-alerts');
+  
   if(!alertMeds.length){al.innerHTML='<div class="empty-state"><div class="empty-icon">✅</div>No hay alertas activas</div>';} else {
     al.innerHTML=alertMeds.slice(0,6).map(m=>{const d=daysUntil(m.vencimiento);const cls=d<0?'danger':'';const lbl=d<0?'VENCIDO':`Vence en ${d} días`;
     return `<div class="alert-item ${cls}"><div class="alert-dot"></div><div class="alert-text"><strong>${m.nombre}</strong> — ${m.compuesto} · Stock: ${m.stock}</div><span class="alert-badge">${lbl}</span></div>`;}).join('');
